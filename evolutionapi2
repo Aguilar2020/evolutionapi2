@@ -1,0 +1,157 @@
+version: "3.8"
+
+services:
+  evolution_v2:
+    restart: always
+    image: rodrigoaguilar02/evolutionapi2:v2.0.10
+    depends_on:
+      - evo_redis
+      - evo_postgres
+    volumes:
+      - evolution_instances:/evolution/instances
+    networks:
+      - evolutionapi_2
+    environment:
+      - AUTHENTICATION_API_KEY=659547E4H979415DGAIAAE39F0D57E33 # API Key
+      - AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=true
+      - CACHE_LOCAL_ENABLED=false
+      - CACHE_REDIS_ENABLED=true
+      - CACHE_REDIS_PREFIX_KEY=evolution_v2
+      - CACHE_REDIS_SAVE_INSTANCES=false
+      - CACHE_REDIS_URI=redis://evo_redis:6379/1
+      - CHATWOOT_ENABLED=false
+      - CHATWOOT_IMPORT_DATABASE_CONNECTION_URI=postgresql://user:password@host:5432/chatwoot?sslmode=disable # Chatwoot
+      - CHATWOOT_IMPORT_PLACEHOLDER_MEDIA_MESSAGE=true
+      - CHATWOOT_MESSAGE_DELETE=true
+      - CHATWOOT_MESSAGE_READ=true
+      - DATABASE_CONNECTION_CLIENT_NAME=evolution_v2
+      - DATABASE_CONNECTION_URI=postgresql://postgres:123456@evo_postgres:5432/evolution # Postgres
+      - DATABASE_ENABLED=true
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_SAVE_DATA_CHATS=true
+      - DATABASE_SAVE_DATA_CONTACTS=true
+      - DATABASE_SAVE_DATA_HISTORIC=true
+      - DATABASE_SAVE_DATA_INSTANCE=true
+      - DATABASE_SAVE_DATA_LABELS=true
+      - DATABASE_SAVE_DATA_NEW_MESSAGE=true
+      - DATABASE_SAVE_MESSAGE_UPDATE=true
+      - DEL_INSTANCE=false
+      - DIFY_ENABLED=true
+      - LANGUAGE=pt-br
+      - LOG_BAILEYS=error
+      - LOG_LEVEL=ERROR
+      - OPENAI_ENABLED=true
+      - QRCODE_COLOR=#175197
+      - QRCODE_LIMIT=30
+      - RABBITMQ_ENABLED=true
+      - RABBITMQ_GLOBAL_ENABLED=true
+      - RABBITMQ_URI=amqp://seu_usuario:123456@rabbitmq:5672/rabbitmq # RabbitMQ
+      - S3_ACCESS_KEY=seu_access_key # S3 Access Key
+      - S3_BUCKET=evolution
+      - S3_ENABLED=true
+      - S3_ENDPOINT=s3evo.seusite.com.br # URL Minio S3
+      - S3_PORT=443
+      - S3_SECRET_KEY=seu_secret_key # S3 Secret Key
+      - S3_USE_SSL=true
+      - SERVER_URL=https://evo.ispnoc.com.br# URL Evo 2
+      - SERVER_TYPE=https
+      - SERVER_PORT=8080
+      - SQS_ENABLED=false
+      - TELEMETRY=false
+      - TYPEBOT_API_VERSION=latest
+      - WEBSOCKET_ENABLED=true
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.evolution_v2.rule=Host(`evo.ispnoc.com.br`) # URL Evo 2
+      - traefik.http.routers.evolution_v2.entrypoints=web,websecure
+      - traefik.http.routers.evolution_v2.tls.certresolver=leresolver
+      - traefik.http.routers.evolution_v2.service=evolution_v2
+      - traefik.http.services.evolution_v2.loadbalancer.server.port=8080
+      - traefik.http.services.evolution_v2.loadbalancer.passHostHeader=true
+  evo_postgres:
+    image: postgres:14
+    restart: always
+    environment:
+      - POSTGRES_DB=evolution # Nome do Banco de Dados
+      - POSTGRES_PASSWORD=123456 # Senha do Banco de Dados
+    networks:
+      - evolutionapi_2
+    volumes:
+      - evo_postgres_data:/var/lib/postgresql/data
+
+  evo_redis:
+    image: redis:latest
+    restart: always
+    volumes:
+      - evo_redis:/data
+    command: redis-server
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+    networks:
+      - evolutionapi_2
+
+  evo_minio:
+    image: quay.io/minio/minio:RELEASE.2024-03-26T22-10-45Z
+    restart: always
+    command: server /data --console-address ":9001"
+    networks:
+      - evolutionapi_2
+    volumes:
+      - evo_minio_data:/data
+    environment:
+      - MINIO_ROOT_USER=admin # Usuári MinIO
+      - MINIO_ROOT_PASSWORD=12345678 # Senha MinIO
+      - MINIO_BROWSER_REDIRECT_URL=https://storageevo.ispnoc.com.br # URL Storage Minio
+      - MINIO_SERVER_URL=https://s3evo.ispnoc.com.br # URL Minio S3
+      - MINIO_VOLUMES=/data
+      - CONSOLE_MINIO_SERVER=https://s3evo.ispnoc.com.br # URL Minio S3
+      - MINIO_OPTS=--console-address=":9001"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.minio_public.rule=Host(`s3evo.ispnoc.com.br`) # URL Minio S3
+      - traefik.http.routers.minio_public.entrypoints=web,websecure
+      - traefik.http.routers.minio_public.tls.certresolver=leresolver
+      - traefik.http.services.minio_public.loadbalancer.server.port=9000
+      - traefik.http.services.minio_public.loadbalancer.passHostHeader=true
+      - traefik.http.routers.minio_public.service=minio_public
+
+
+      - traefik.http.routers.minio_console.rule=Host(`storageevo.ispnoc.com.br`) # URL Storage Minio
+      - traefik.http.routers.minio_console.entrypoints=web,websecure
+      - traefik.http.routers.minio_console.tls.certresolver=leresolver
+      - traefik.http.services.minio_console.loadbalancer.server.port=9001
+      - traefik.http.services.minio_console.loadbalancer.passHostHeader=true
+      - traefik.http.routers.minio_console.service=minio_console
+  
+  rabbitmq:
+    image: rabbitmq:management
+    restart: always
+    command: rabbitmq-server
+    networks:
+      - evolutionapi_2
+    hostname: rabbitmq
+    volumes:
+      - evo_rabbitmq_data:/var/lib/rabbitmq
+    environment:
+      - RABBITMQ_ERLANG_COOKIE=a4f7e1b298c1247e1ad8c29c5b6e8a9e21fa7c9db6f3c7a2859a1d72a4e5b8c9
+      - RABBITMQ_DEFAULT_VHOST=rabbitmq
+      - RABBITMQ_DEFAULT_USER=seu_usuario # Usuário RabbitMQ
+      - RABBITMQ_DEFAULT_PASS=123456 # Senha RabbitMQ
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.rabbitmq.rule=Host(`evorabbit.ispnoc.com.br`)  # URL RabbitMQ
+      - traefik.http.routers.rabbitmq.entrypoints=web,websecure
+      - traefik.http.routers.rabbitmq.tls.certresolver=leresolver
+      - traefik.http.routers.rabbitmq.service=rabbitmq
+      - traefik.http.services.rabbitmq.loadbalancer.server.port=15672
+
+volumes:
+  evo_rabbitmq_data:
+  evo_minio_data:
+  evo_redis:
+  evolution_instances:
+  evo_postgres_data:
+
+networks:
+  evolutionapi_2:
+    external: true
